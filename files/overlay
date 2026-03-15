@@ -1,0 +1,59 @@
+#!/bin/sh
+PREREQ=""
+case $1 in prereqs) echo "$PREREQ"; exit 0;; esac
+. /scripts/functions
+
+set -eu
+trap '[ $? -ne 0 ] && panic "Error during overlay setup"' EXIT
+
+# https://manpages.debian.org/trixie/initramfs-tools-core/initramfs-tools.7.en.html
+# init-bottom scripts run after the real root has been mounted
+# ${rootmnt} is the real root mountpoint, already mounted by the initramfs /init script
+
+mnt_root=/mnt/root
+mnt_persist=/mnt/persist
+
+log_begin_msg "Setting up overlay"
+
+# Format the `persist` partition if `reset` is present in kernel cmdline or fsck fails
+reset=false
+if grep -q '\breset\b' /proc/cmdline >/dev/null; then
+    reset=true
+else
+    set +e
+    # https://manpages.debian.org/trixie/e2fsprogs/e2fsck.8.en.html
+    e2fsck -fp "$(findfs LABEL=persist)"
+    if [ "$?" -ge 4 ]; then
+        reset=true
+    fi
+    set -e
+fi
+
+if $reset; then
+    log_warning_msg "Formatting persist partition"
+    mke2fs.e2fsprogs -t ext4 -L persist -F "$(findfs LABEL=persist)"
+fi
+
+# Mount the persistent partition
+mkdir -p "$mnt_persist"
+mount -o noatime LABEL=persist "$mnt_persist"
+mkdir -p "$mnt_persist/upper"
+mkdir -p "$mnt_persist/work"
+
+# Move the real root mount to our mountpoint
+mkdir -p "$mnt_root"
+mount --move "${rootmnt}" "$mnt_root"
+
+# Create the overlay
+mount -t overlay \
+    -o lowerdir=$mnt_root,upperdir=$mnt_persist/upper,workdir=$mnt_persist/work,noatime \
+    overlay "${rootmnt}"
+
+# Move the mounts from initramfs to their final mountpoints
+mkdir -p "${rootmnt}$mnt_root"
+mount --move "$mnt_root" "${rootmnt}$mnt_root"
+mkdir -p "${rootmnt}$mnt_persist"
+mount --move "$mnt_persist" "${rootmnt}$mnt_persist"
+
+log_end_msg
+exit 0

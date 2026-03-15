@@ -1,0 +1,3 @@
+# overlay is mounted by initramfs script
+tmpfs /var/tmp tmpfs defaults 0 0
+tmpfs /var/log tmpfs defaults 0 0

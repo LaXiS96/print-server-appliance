@@ -1,0 +1,13 @@
+#!/bin/sh
+PREREQ=""
+case $1 in
+prereqs) echo "$PREREQ"; exit 0;;
+esac
+. /usr/share/initramfs-tools/hook-functions
+
+copy_exec /sbin/fsck
+copy_exec /sbin/fsck.ext4
+copy_exec /sbin/logsave
+copy_exec /sbin/e2fsck
+# busybox overrides /sbin/mke2fs
+copy_exec /sbin/mke2fs /sbin/mke2fs.e2fsprogs
