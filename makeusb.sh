@@ -2,12 +2,13 @@
 set -Eeu -o pipefail
 
 # Prepares an USB drive with a TinyCoreLinux bootable image
+# TODO cache tczs in stage like build.sh?
 
 : "${TINYCORE_BASE_URL:="http://tinycorelinux.net/17.x/x86_64"}"
 : "${LINUX_URL:="$TINYCORE_BASE_URL/release/distribution_files/vmlinuz64"}"
 : "${INITRD_URL:="$TINYCORE_BASE_URL/release/distribution_files/corepure64.gz"}"
 : "${TCZ_URL:="$TINYCORE_BASE_URL/tcz"}"
-: "${TCZS:="bzip2 coreutils file gzip lz4 openssl xz"}"
+: "${TCZS:="bzip2 coreutils efibootmgr file gzip lz4 openssl xz"}"
 : "${BMAP_RS_GIT:="https://github.com/collabora/bmap-rs.git"}"
 
 if [[ $# -ne 1 ]]; then
@@ -87,6 +88,14 @@ menuentry "Tiny Core Linux" {
 }
 EOF
 
+sudo mkdir -p "$mnt_data/data"
+sudo chmod 777 "$mnt_data/data"
+if [[ -f out/out.img.gz ]]; then
+    echo "Copying out.img"
+    cp --verbose out/out.img.gz out/out.img.bmap "$mnt_data/data/"
+    sync "$mnt_data/data/out.img.gz"
+fi
+
 sudo mkdir -p "$mnt_data/opt"
 sudo tee "$mnt_data/opt/bootlocal.sh" >/dev/null <<EOF
 #!/bin/sh
@@ -116,4 +125,5 @@ done <<<"$tcz_deps"
 sudo mkdir -p "$mnt_data/bin"
 sudo cp bmap-rs/target/release/bmap-rs "$mnt_data/bin/"
 
+echo "Finishing up"
 unmount

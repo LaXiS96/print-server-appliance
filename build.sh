@@ -25,16 +25,14 @@ enter() {
 }
 
 cleanup() {
-    set +e
-    sudo umount --recursive --quiet "$mnt"
-    sudo losetup --detach "$loop"
-    rmdir "$mnt"
-    set -e
+    sudo umount --recursive --quiet "$mnt" || true
+    [[ $loop ]] && sudo losetup --detach "$loop" || true
+    rmdir "$mnt" || true
 }
 
 onerror() {
     local exit=$?
-    echo "!!! Failed with exit code: $exit" >&2
+    echo "!!! Failed with exit code: $exit, command: $BASH_COMMAND" >&2
     cleanup
     exit $exit
 }
@@ -60,8 +58,6 @@ fi
 loop=$(sudo losetup --find "$OUT_DIR/$IMAGE" --partscan --show)
 echo ">>> Loop device: $loop"
 
-# TODO store configuration in config partition?
-#      alternatively allow remounting rw?
 if $base_install; then
     echo ">>> Partitioning"
     sudo sgdisk --clear \
@@ -70,7 +66,6 @@ if $base_install; then
         --new=3:0:0      --typecode=3:8300 \
         "$loop"
 
-    # TODO f2fs instead of ext4 for writable filesystem?
     echo ">>> Formatting"
     sudo mkfs.vfat -F32 "${loop}p1"
     sudo mkfs.ext4 -L root "${loop}p2"
@@ -106,19 +101,27 @@ if $base_install; then
         libpam-systemd \
         systemd-timesyncd \
         openssh-server
-    # TODO generated ssh host key includes build host name
 
-    # TODO unmount before copying? probably not, unmounting later should clean up ext4
     cp "$OUT_DIR/$IMAGE" "$STAGE_DIR/$IMAGE"
 fi
 
 echo ">>> Installing GRUB"
-# sed -i '/^GRUB_CMDLINE_LINUX_DEFAULT=/s/.*/GRUB_CMDLINE_LINUX_DEFAULT="console=ttyS0,115200n8"/' "$mnt/etc/default/grub"
+# https://blog.roberthallam.org/2020/05/psa-dell-wyse-3040-uses-fallback-efi-location/
+# https://www.rodsbooks.com/efi-bootloaders/fallback.html
+# Install GRUB to /EFI/debian
 enter grub-install \
     --target=x86_64-efi \
     --uefi-secure-boot \
     --bootloader-id=debian \
-    --removable
+    --no-nvram
+# Set up EFI fallback /EFI/BOOT
+# shimx64 (BOOTX64.EFI) hands off to fbx64 which creates boot entries in NVRAM
+# based on the BOOTX64.CSV file it finds in /EFI/debian
+sudo mkdir -p "$mnt/boot/efi/EFI/BOOT"
+sudo cp "$mnt/boot/efi/EFI/debian/shimx64.efi" "$mnt/boot/efi/EFI/BOOT/BOOTX64.EFI"
+sudo cp "$mnt/boot/efi/EFI/debian/fbx64.efi" "$mnt/boot/efi/EFI/BOOT/fbx64.efi"
+sudo cp "$mnt/boot/efi/EFI/debian/mmx64.efi" "$mnt/boot/efi/EFI/BOOT/mmx64.efi"
+sudo cp "$mnt/boot/efi/EFI/debian/grubx64.efi" "$mnt/boot/efi/EFI/BOOT/grubx64.efi"
 enter update-grub
 
 sudo tee "$mnt/etc/hostname" <<<"$HOSTNAME" >/dev/null
@@ -140,22 +143,18 @@ enter apt install -y \
     avahi-daemon
 # TODO cupsd.conf
 
-# TODO autoexpand persist partition on first boot?
-
 echo ">>> Finalizing image"
 enter apt clean
 sudo rm -rf "$mnt/var/lib/apt/lists/*" "$mnt/var/cache/*" "$mnt/var/log/*"
 
 sudo umount --recursive --quiet "$mnt"
-sudo e2fsck -fp "${loop}p2"
+sudo fsck.fat -a "${loop}p1" || true
+sudo e2fsck -fp "${loop}p2" || true
 sudo losetup --detach "$loop"
+loop=""
 
 python -m bmaptool create -o "$OUT_DIR/$IMAGE.bmap" "$OUT_DIR/$IMAGE"
-# TODO bmap-rs only supports gzip
-# lz4 "$OUT_DIR/$IMAGE" "$OUT_DIR/$IMAGE.lz4"
 gzip --fast --stdout --force --verbose "$OUT_DIR/$IMAGE" >"$OUT_DIR/$IMAGE.gz"
 
 echo ">>> Done!"
-# du -h "$OUT_DIR/$IMAGE" "$OUT_DIR/$IMAGE.lz4"
-
 cleanup

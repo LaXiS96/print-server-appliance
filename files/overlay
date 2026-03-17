@@ -20,13 +20,12 @@ reset=false
 if grep -q '\breset\b' /proc/cmdline >/dev/null; then
     reset=true
 else
-    set +e
     # https://manpages.debian.org/trixie/e2fsprogs/e2fsck.8.en.html
-    e2fsck -fp "$(findfs LABEL=persist)"
-    if [ "$?" -ge 4 ]; then
+    if e2fsck -fp "$(findfs LABEL=persist)"; then
+        reset=false
+    elif [ $? -ge 4 ]; then
         reset=true
     fi
-    set -e
 fi
 
 if $reset; then
