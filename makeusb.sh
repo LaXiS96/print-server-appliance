@@ -101,6 +101,7 @@ sudo tee "$mnt_data/opt/bootlocal.sh" >/dev/null <<EOF
 #!/bin/sh
 # Fix dynamically linked binaries referencing /lib64
 ln -s /lib /lib64
+mount -t efivarfs efivarfs /sys/firmware/efi/efivars
 EOF
 sudo chmod a+x "$mnt_data/opt/bootlocal.sh"
 

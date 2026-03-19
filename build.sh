@@ -68,8 +68,8 @@ if $base_install; then
 
     echo ">>> Formatting"
     sudo mkfs.vfat -F32 "${loop}p1"
-    sudo mkfs.ext4 -L root "${loop}p2"
-    sudo mkfs.ext4 -L persist "${loop}p3"
+    sudo mkfs.ext4 -L rootfs "${loop}p2"
+    sudo mkfs.ext4 -L overlay "${loop}p3"
 fi
 
 mkdir -p "$mnt"
@@ -88,7 +88,7 @@ sudo mount --bind /dev "$mnt/dev"
 sudo mount --bind /proc "$mnt/proc"
 sudo mount --bind /sys "$mnt/sys"
 
-sudo mkdir -p "$mnt/boot/efi"
+enter mkdir -p /boot/efi
 sudo mount "${loop}p1" "$mnt/boot/efi"
 
 if $base_install; then
@@ -117,20 +117,18 @@ enter grub-install \
 # Set up EFI fallback /EFI/BOOT
 # shimx64 (BOOTX64.EFI) hands off to fbx64 which creates boot entries in NVRAM
 # based on the BOOTX64.CSV file it finds in /EFI/debian
-sudo mkdir -p "$mnt/boot/efi/EFI/BOOT"
-sudo cp "$mnt/boot/efi/EFI/debian/shimx64.efi" "$mnt/boot/efi/EFI/BOOT/BOOTX64.EFI"
-sudo cp "$mnt/boot/efi/EFI/debian/fbx64.efi" "$mnt/boot/efi/EFI/BOOT/fbx64.efi"
-sudo cp "$mnt/boot/efi/EFI/debian/mmx64.efi" "$mnt/boot/efi/EFI/BOOT/mmx64.efi"
-sudo cp "$mnt/boot/efi/EFI/debian/grubx64.efi" "$mnt/boot/efi/EFI/BOOT/grubx64.efi"
+enter mkdir -p /boot/efi/EFI/BOOT
+enter cp /boot/efi/EFI/{debian/shimx64.efi,BOOT/BOOTX64.EFI}
+enter cp /boot/efi/EFI/debian/{fbx64,mmx64,grubx64}.efi /boot/efi/EFI/BOOT/
 enter update-grub
 
-sudo tee "$mnt/etc/hostname" <<<"$HOSTNAME" >/dev/null
+enter tee /etc/hostname <<<"$HOSTNAME" >/dev/null
 echo "root:changeme" | enter chpasswd
 sudo install --mode=0644 files/interfaces "$mnt/etc/network/interfaces"
 sudo install --mode=0644 files/fstab "$mnt/etc/fstab"
 sudo install --mode=0755 files/overlay "$mnt/etc/initramfs-tools/scripts/init-bottom/overlay"
 sudo install --mode=0755 files/overlayhook "$mnt/etc/initramfs-tools/hooks/overlay"
-sudo tee -a "$mnt/etc/initramfs-tools/modules" <<<"overlay" >/dev/null
+enter tee -a /etc/initramfs-tools/modules <<<"overlay" >/dev/null
 enter update-initramfs -u -k all
 
 # https://wiki.debian.org/SystemPrinting
@@ -139,17 +137,18 @@ enter update-initramfs -u -k all
 # https://wiki.debian.org/Avahi
 enter apt install -y \
     cups \
-    printer-driver-all \
-    avahi-daemon
-# TODO cupsd.conf
+    printer-driver-all
+
+# Allow access to CUPS web interface from local subnets
+sudo sed -f files/cupsd.conf.sed -i "$mnt/etc/cups/cupsd.conf"
 
 echo ">>> Finalizing image"
 enter apt clean
-sudo rm -rf "$mnt/var/lib/apt/lists/*" "$mnt/var/cache/*" "$mnt/var/log/*"
+enter bash -c 'rm -rf /var/lib/apt/lists/* /var/cache/* /var/log/*'
 
 sudo umount --recursive --quiet "$mnt"
-sudo fsck.fat -a "${loop}p1" || true
-sudo e2fsck -fp "${loop}p2" || true
+sudo fsck.fat -p "${loop}p1" || true
+sudo e2fsck -p "${loop}p2" || true
 sudo losetup --detach "$loop"
 loop=""
 

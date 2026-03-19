@@ -10,18 +10,18 @@ trap '[ $? -ne 0 ] && panic "Error during overlay setup"' EXIT
 # init-bottom scripts run after the real root has been mounted
 # ${rootmnt} is the real root mountpoint, already mounted by the initramfs /init script
 
-mnt_root=/mnt/root
-mnt_persist=/mnt/persist
+mnt_rootfs=/mnt/rootfs
+mnt_overlay=/mnt/overlay
 
 log_begin_msg "Setting up overlay"
 
-# Format the `persist` partition if `reset` is present in kernel cmdline or fsck fails
+# Format the overlay partition if `reset` is present in kernel cmdline or fsck fails
 reset=false
 if grep -q '\breset\b' /proc/cmdline >/dev/null; then
     reset=true
 else
     # https://manpages.debian.org/trixie/e2fsprogs/e2fsck.8.en.html
-    if e2fsck -fp "$(findfs LABEL=persist)"; then
+    if e2fsck -p "$(findfs LABEL=overlay)"; then
         reset=false
     elif [ $? -ge 4 ]; then
         reset=true
@@ -29,30 +29,30 @@ else
 fi
 
 if $reset; then
-    log_warning_msg "Formatting persist partition"
-    mke2fs.e2fsprogs -t ext4 -L persist -F "$(findfs LABEL=persist)"
+    log_warning_msg "Formatting overlay partition"
+    mke2fs.e2fsprogs -t ext4 -L overlay -F "$(findfs LABEL=overlay)"
 fi
 
-# Mount the persistent partition
-mkdir -p "$mnt_persist"
-mount -o noatime LABEL=persist "$mnt_persist"
-mkdir -p "$mnt_persist/upper"
-mkdir -p "$mnt_persist/work"
+# Mount the overlay partition
+mkdir -p "$mnt_overlay"
+mount -o noatime LABEL=overlay "$mnt_overlay"
+mkdir -p "$mnt_overlay/upper"
+mkdir -p "$mnt_overlay/work"
 
 # Move the real root mount to our mountpoint
-mkdir -p "$mnt_root"
-mount --move "${rootmnt}" "$mnt_root"
+mkdir -p "$mnt_rootfs"
+mount --move "${rootmnt}" "$mnt_rootfs"
 
 # Create the overlay
 mount -t overlay \
-    -o lowerdir=$mnt_root,upperdir=$mnt_persist/upper,workdir=$mnt_persist/work,noatime \
+    -o lowerdir=$mnt_rootfs,upperdir=$mnt_overlay/upper,workdir=$mnt_overlay/work,noatime \
     overlay "${rootmnt}"
 
 # Move the mounts from initramfs to their final mountpoints
-mkdir -p "${rootmnt}$mnt_root"
-mount --move "$mnt_root" "${rootmnt}$mnt_root"
-mkdir -p "${rootmnt}$mnt_persist"
-mount --move "$mnt_persist" "${rootmnt}$mnt_persist"
+mkdir -p "${rootmnt}$mnt_rootfs"
+mount --move "$mnt_rootfs" "${rootmnt}$mnt_rootfs"
+mkdir -p "${rootmnt}$mnt_overlay"
+mount --move "$mnt_overlay" "${rootmnt}$mnt_overlay"
 
 log_end_msg
 exit 0
