@@ -85,6 +85,7 @@ if $base_install; then
 fi
 
 sudo mount --bind /dev "$mnt/dev"
+sudo mount --bind /dev/pts "$mnt/dev/pts"
 sudo mount --bind /proc "$mnt/proc"
 sudo mount --bind /sys "$mnt/sys"
 
@@ -92,6 +93,8 @@ enter mkdir -p /boot/efi
 sudo mount "${loop}p1" "$mnt/boot/efi"
 
 if $base_install; then
+    enter rm /etc/apt/sources.list
+    enter cp /usr/share/doc/apt/examples/debian.sources /etc/apt/sources.list.d/
     enter apt update
     # https://wiki.archlinux.org/title/Systemd-nspawn#Create_a_Debian_or_Ubuntu_environment
     enter apt install -y \
@@ -136,11 +139,23 @@ enter update-initramfs -u -k all
 # https://wiki.debian.org/CUPSPrintQueues#nonfree
 # https://wiki.debian.org/Avahi
 enter apt install -y \
-    cups \
-    printer-driver-all
+    cups printer-driver-all
+
+# Disable CUPS automatic resharing of existing network printers
+enter systemctl disable cups-browsed
+
+# Set AppArmor cupsd profile to complain mode (aa-complain from apparmor-utils doesn't work in chroot)
+enter mkdir -p /etc/apparmor.d/force-complain
+enter ln -s /etc/apparmor.d/usr.sbin.cupsd /etc/apparmor.d/force-complain/usr.sbin.cupsd
 
 # Allow access to CUPS web interface from local subnets
 sudo sed -f files/cupsd.conf.sed -i "$mnt/etc/cups/cupsd.conf"
+enter tee -a /etc/cups/cupsd.conf <<<"ServerAlias *" >/dev/null
+
+# Set up WiFi
+enter apt install -y \
+    iw wireless-tools wpasupplicant
+sudo install --mode=0600 files/wpa_supplicant.conf "$mnt/etc/wpa_supplicant/wpa_supplicant.conf"
 
 echo ">>> Finalizing image"
 enter apt clean

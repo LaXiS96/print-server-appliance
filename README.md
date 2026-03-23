@@ -9,7 +9,7 @@ If the persistent partition fails `fsck`, it is formatted and the system should 
 The persistent partition can also be formatted on request by adding `reset` to the kernel cmdline (in GRUB).  
 
 `makeusb.sh` installs TinyCoreLinux to a block device (ie. USB drive), to be used for booting on the target system and flashing the disk image to the internal eMMC.  
-The native `bmap-rs` utility is built: requires [Rust](https://rustup.rs/) to build.
+The `bmap-rs` utility is built: requires [Rust](https://rustup.rs/) to build.
 
 Tested on Fedora 43, requires packages `git gdisk python-bmaptools`.
 
@@ -25,12 +25,24 @@ Tested on Fedora 43, requires packages `git gdisk python-bmaptools`.
     ```
 5. Reboot and enjoy!
 
+## CUPS
+CUPS is configured via its web admin interface on `http://&lt;IP&gt;:631/` with a valid user and password (`root` usually).
+
+Add your printer via `Administration` > `Find New Printers` and make sure to enable the `Share This Printer` option. Devices on your network (eg. Android phones) will automatically find the printer.
+
+## Wi-Fi
+Wi-Fi support is included in the image; the adapter can be inspected with `iw` and the connection can be configured via `/etc/network/interfaces` and `/etc/wpa_supplicant/wpa_supplicant.conf`.
+
+If your adapter requires firmware, you must install its firmware package (eg. `firmware-mediatek` for MT7601U adapters). Look in the logs (ie. `journalctl`) for clues about missing firmware.
+
+## Headless access
+OpenSSH server is installed but defaults to not allowing root login with password. Either change the root password and ensure `PermitRootLogin yes` in `/etc/ssh/sshd_config`, or add your SSH key.
+
 ## TODO
 
-- [ ] wifi support
-    - usb device is mt7601u, driver is built into the kernel, firmware from `firmware-mediatek`
-    - https://wiki.debian.org/WiFi/HowToUse#Using_ifupdown_and_wpasupplicant
-    - `wpasupplicant iw wireless-tools`
+- lower grub timeout?
+- system seems still too bloated... what can we remove?
+- [ ] fix gpt end-of-disk table after flashing
 - [ ] move CUPS configuration to an additional partition (ro or rw?) so that formatting the persistent partition does not lose that too
 - [ ] f2fs instead of ext4 for writable filesystem?
 - [ ] autoexpand persistent partition on first boot?

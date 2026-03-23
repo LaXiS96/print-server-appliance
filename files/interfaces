@@ -3,4 +3,10 @@
 source /etc/network/interfaces.d/*
 
 auto /en*=eth
+allow-hotplug /en*=eth
 iface eth inet dhcp
+
+#auto wlan0
+#allow-hotplug wlan0
+#iface wlan0 inet dhcp
+#	wpa-conf /etc/wpa_supplicant/wpa_supplicant.conf
